@@ -398,6 +398,8 @@ This is meant for debugging pregeneration: it shows not only “progress”, but
 * For huge radii, the viewer uses a **scaled grid** (each pixel/cell may represent multiple chunks) so it stays fast and doesn’t spam packets.
 
 **Example:**
+https://github.com/user-attachments/assets/6221de56-73c5-449a-a93b-64b71b9102bf
+
 
 ```
 /pregenMill view 8000
