@@ -18,20 +18,8 @@ Pregenerate your world means:
 * and eventually fewer worldgen crashes during normal play (because generation already happened).
 * distant horizon <3
 
-
-It generates chunks in a **square spiral** starting from a center point:
-
-* it starts in the middle (your position by default),
-* then goes out in a spiral like a growing square,
-* until it reaches the requested radius.
-
 Video :
 https://youtu.be/R2M3Zwqo27M
-
-
-
-
-
 
 ## Before you start: important things to know
 
