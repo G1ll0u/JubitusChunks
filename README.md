@@ -74,7 +74,7 @@ Even if:
 you can continue with:
 
 ```
-/pregenMill resume
+/jubituschunks resume
 ```
 
 ---
@@ -84,7 +84,7 @@ you can continue with:
 ### Start pregeneration
 
 ```
-/pregenMill <radiusBlocks> [x] [z] [skipExisting|force]
+/jubituschunks <radiusBlocks> [x] [z] [skipExisting|force]
 ```
 
 **Defaults:**
@@ -98,31 +98,31 @@ you can continue with:
 * Generate 8000 block radius around you (or at spawn point if run from server) :
 
   ```
-  /pregenMill 8000
+  /jubituschunks 8000
   ```
 
 * Generate 8000 block radius around coordinates 0 0:
 
   ```
-  /pregenMill 8000 0 0
+  /jubituschunks 8000 0 0
   ```
 
 * Force generation even if chunks already exist (but allows to generate Millénaire villages on already generated terrain):
 
   ```
-  /pregenMill 8000 force
+  /jubituschunks 8000 force
   ```
 
 * Explicitly skip chunks that already exist (faster):
 
   ```
-  /pregenMill 8000 skipExisting
+  /jubituschunks 8000 skipExisting
   ```
 
 ### Stop pregeneration
 
 ```
-/pregenMill stop
+/jubituschunks stop
 ```
 
 Stops the running pregen in your current dimension.
@@ -130,10 +130,10 @@ Stops the running pregen in your current dimension.
 ### Resume pregeneration
 
 ```
-/pregenMill resume [stepIndex] [x] [z]
+/jubituschunks resume [stepIndex] [x] [z]
 ```
 
-**Defaults when you type only `/pregenMill resume`:**
+**Defaults when you type only `/jubituschunks resume`:**
 
 * It resumes from the **last saved progress step** in that dimension.
 * It resumes using the same center and radius from the saved file.
@@ -143,19 +143,19 @@ Stops the running pregen in your current dimension.
 * Resume from the saved step automatically:
 
   ```
-  /pregenMill resume
+  /jubituschunks resume
   ```
 
 * Resume from a specific step number:
 
   ```
-  /pregenMill resume 42000
+  /jubituschunks resume 42000
   ```
 
 * Resume from a specific step number, but change the spiral center (block coords):
 
   ```
-  /pregenMill resume 42000 0 0
+  /jubituschunks resume 42000 0 0
   ```
 
 ---
@@ -165,7 +165,7 @@ Stops the running pregen in your current dimension.
 ### Open the viewer
 
 ```
-/pregenMill view <radiusBlocks>
+/jubituschunks view <radiusBlocks>
 ```
 
 Opens a **real-time chunk viewer GUI** for the current dimension.
@@ -201,7 +201,7 @@ This is meant for debugging pregeneration: it shows not only “progress”, but
 **Example:**
 
 ```
-/pregenMill view 8000
+/jubituschunks view 8000
 ```
 
 Opens the viewer for an 8000 block radius around the current pregen center (if running) or around you (if not running).
@@ -220,7 +220,7 @@ A **step** is one “spiral position” the generator processes.
 So when you do:
 
 ```
-/pregenMill 8000
+/jubituschunks 8000
 ```
 
 You might see something like:
@@ -243,14 +243,14 @@ Example:
 * You ran:
 
   ```
-  /pregenMill 8000
+  /jubituschunks 8000
   ```
 * It got to step 42000 and died.
 
 You can recover with:
 
 ```
-/pregenMill resume 42000
+/jubituschunks resume 42000
 ```
 
 That continues from “step 42000 in the spiral” and keeps going outward.
@@ -264,7 +264,7 @@ A common workflow is:
 ### Phase 1: generate a smaller safe radius
 
 ```
-/pregenMill 8000
+/jubituschunks 8000
 ```
 
 Let it finish.
@@ -272,7 +272,7 @@ Let it finish.
 ### Phase 2: later expand the world further
 
 ```
-/pregenMill 12000
+/jubituschunks 12000
 ```
 
 If `skipExisting` is enabled (default in most setups), the mod will:
@@ -285,7 +285,7 @@ If `skipExisting` is enabled (default in most setups), the mod will:
 Same idea, repeat:
 
 ```
-/pregenMill 20000
+/jubituschunks 20000
 ```
 
 ---
@@ -331,31 +331,31 @@ Especially before huge runs.
 **Start around you:**
 
 ```
-/pregenMill 8000
+/jubituschunks 8000
 ```
 
 **Stop:**
 
 ```
-/pregenMill stop
+/jubituschunks stop
 ```
 
 **Resume from saved progress:**
 
 ```
-/pregenMill resume
+/jubituschunks resume
 ```
 
 **Resume from step 42000:**
 
 ```
-/pregenMill resume 42000
+/jubituschunks resume 42000
 ```
 
 **Expand later to 12000:**
 
 ```
-/pregenMill 12000
+/jubituschunks 12000
 ```
 
 ---
@@ -364,7 +364,7 @@ Especially before huge runs.
 ### Open the viewer
 
 ```
-/pregenMill view <radiusBlocks>
+/jubituschunks view <radiusBlocks>
 ```
 
 Opens a **real-time chunk viewer GUI** for the current dimension.
@@ -402,7 +402,7 @@ https://github.com/user-attachments/assets/6221de56-73c5-449a-a93b-64b71b9102bf
 
 
 ```
-/pregenMill view 8000
+/jubituschunks view 8000
 ```
 
 Opens the viewer for an 8000 block radius around the current pregen center (if running) or around you (if not running).
