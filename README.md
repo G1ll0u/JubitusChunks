@@ -28,7 +28,7 @@ It generates chunks in a **square spiral** starting from a center point:
 Video :
 https://youtu.be/R2M3Zwqo27M
 
-https://github.com/user-attachments/assets/6221de56-73c5-449a-a93b-64b71b9102bf
+
 
 
 
@@ -152,7 +152,7 @@ Stops the running pregen in your current dimension.
   /jubituschunks resume 42000
   ```
 
-* Resume from a specific step number, but change the spiral center (block coords):
+* Resume from a specific step number, but change the spiral center (stupid):
 
   ```
   /jubituschunks resume 42000 0 0
@@ -160,53 +160,6 @@ Stops the running pregen in your current dimension.
 
 ---
 
-## Chunk Viewer (Real-time chunks map)
-
-### Open the viewer
-
-```
-/jubituschunks view <radiusBlocks>
-```
-
-Opens a **real-time chunk viewer GUI** for the current dimension.
-
-This is meant for debugging pregeneration: it shows not only “progress”, but also what the server **actually has loaded** right now.
-
-**Works on dedicated servers**: the command is executed server-side, and the GUI opens on the player client.
-
-**Rules / behavior:**
-
-* If a pregen task is running in this dimension:
-
-  * Viewer centers on the **pregen center**
-  * Viewer highlights the **spiral “head” working area** in red (the moving square of chunks your task is currently processing)
-* If no pregen task is running:
-
-  * Viewer centers on **your current position**
-* Supports very large radii up to 12000+
-
-### Colors / legend
-
-* **Dark grey**: chunk area **not generated**
-* **Grey**: chunk area **generated**
-* **White**: chunk area **currently loaded**
-* **Red overlay**: pregenerator **head / working square**
-* **Green dot**: viewer **center**
-
-### Notes
-
-* The viewer is **live** and updates several times per second.
-* For huge radii, the viewer uses a **scaled grid** (each pixel/cell may represent multiple chunks) so it stays fast and doesn’t spam packets.
-
-**Example:**
-
-```
-/jubituschunks view 8000
-```
-
-Opens the viewer for an 8000 block radius around the current pregen center (if running) or around you (if not running).
-
----
 
 ## How progress works (steps vs blocks)
 
@@ -234,28 +187,50 @@ Steps are the mod’s internal “spiral index”. They’re only used for resum
 
 ---
 
-## How to select part of the spiral (resume at any point)
+## Chunk Viewer (Real-time chunks map)
 
-If your run dies halfway through, you can restart from any step:
-
-Example:
-
-* You ran:
-
-  ```
-  /jubituschunks 8000
-  ```
-* It got to step 42000 and died.
-
-You can recover with:
+### Open the viewer
 
 ```
-/jubituschunks resume 42000
+/jubituschunks view <radiusBlocks>
 ```
 
-That continues from “step 42000 in the spiral” and keeps going outward.
+Opens a real-time chunk viewer GUI for the current dimension.
+
+This is meant for debugging pregeneration: it shows not only “progress”, but also what the server actually has loaded right now.
+
+**Works server**: the command is executed server-side, and the GUI opens on the player client.
+
+**Rules / behavior:**
+
+* If a pregen task is running in this dimension:
+  * Viewer centers on the **pregen center**
+  * Viewer highlights the spiral “head” working area in red (the moving square of chunks your task is currently processing)
+* If no pregen task is running:
+  * Viewer centers on your current position
+* Supports very large radii up to 12000+
+
+### Colors / legend
+
+* **Dark grey**: chunk area **not generated**
+* **Grey**: chunk area **generated**
+* **White**: chunk area **currently loaded**
+* **Red overlay**: pregenerator **head / working square**
+* **Green dot**: viewer **center**
+
+Legend may be hidden if GUI scale is too big
+
+**Example:**
+
+```
+/jubituschunks view 8000
+```
+
+Opens the viewer for an 8000 block radius around the current pregen center (if running) or around you (if not running).
 
 ---
+
+https://github.com/user-attachments/assets/6221de56-73c5-449a-a93b-64b71b9102bf
 
 ## Expanding later: go bigger without wasting time
 
@@ -326,39 +301,6 @@ Especially before huge runs.
 
 ---
 
-## Quick cheat sheet
-
-**Start around you:**
-
-```
-/jubituschunks 8000
-```
-
-**Stop:**
-
-```
-/jubituschunks stop
-```
-
-**Resume from saved progress:**
-
-```
-/jubituschunks resume
-```
-
-**Resume from step 42000:**
-
-```
-/jubituschunks resume 42000
-```
-
-**Expand later to 12000:**
-
-```
-/jubituschunks 12000
-```
-
----
 ## Chunk Viewer (Real-time debug map)
 
 ### Open the viewer
