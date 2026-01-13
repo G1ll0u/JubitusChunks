@@ -16,7 +16,7 @@ Pregenerate your world means:
   * No more Millénaire village generation lags
 * fewer “freeze spikes” from new chunk generation,
 * and eventually fewer worldgen crashes during normal play (because generation already happened).
-* distant horizon <3
+* and distant horizon <3
 
 Video :
 https://youtu.be/R2M3Zwqo27M
@@ -220,7 +220,7 @@ Opens the viewer for an 8000 block radius around the current pregen center (if r
 
 https://github.com/user-attachments/assets/6221de56-73c5-449a-a93b-64b71b9102bf
 
-## Expanding later: go bigger without wasting time
+## Expanding :
 
 A common workflow is:
 
@@ -238,14 +238,14 @@ Let it finish.
 /jubituschunks 12000
 ```
 
-If `skipExisting` is enabled (default in most setups), the mod will:
+If `skipExisting` is enabled (default), the mod will:
 
 * **skip chunks already generated** inside 8000
 * and mostly work on the “new ring” between 8000 and 12000
 
 ### Phase 3: even bigger again
 
-Same idea, repeat:
+Same idea, repeat :
 
 ```
 /jubituschunks 20000
@@ -255,13 +255,13 @@ Same idea, repeat:
 
 ## What you must be attentive of
 
+
 ### Watch memory usage
 
 If heap memory climbs too high, my mod will stop your world and you will have to *restart* the game and resume the pregeneration.
 
 Best practice:
 
-* do pregen when nobody is playing
 * give it lots of RAM
 * don’t try insane radiuses in one go unless you know your modpack is stable
 
@@ -281,60 +281,9 @@ If you generate with one set of worldgen mods, then change mods later:
 * skipping old chunks means they won’t update
 * you’ll get borders / mismatches
 
-In that case you might choose `force`, but that’s slow and can be messy.
+In that case you might choose `force`, but that’s slow and can be messy so it's not advised.
+When I generate a world, I prepare it by generating small radiuses and check if everything looks good, at this moment, I start the pregeneration
 
 ### Always keep backups
-
-Especially before huge runs.
-
 ---
 
-## Chunk Viewer (Real-time debug map)
-
-### Open the viewer
-
-```
-/jubituschunks view <radiusBlocks>
-```
-
-Opens a **real-time chunk viewer GUI** for the current dimension.
-
-This is meant for debugging pregeneration: it shows not only “progress”, but also what the server **actually has loaded** right now.
-
-**Works on dedicated servers**: the command is executed server-side, and the GUI opens on the player client.
-
-**Rules / behavior:**
-
-* If a pregen task is running in this dimension:
-
-  * Viewer centers on the **pregen center**
-  * Viewer highlights the **spiral “head” working area** in red (the moving square of chunks your task is currently processing)
-* If no pregen task is running:
-
-  * Viewer centers on **your current position**
-* Supports very large radii (same limits as pregeneration; not limited to 12k)
-
-### Colors / legend
-
-* **Dark grey**: chunk area **not generated**
-* **Grey**: chunk area **generated**
-* **White**: chunk area **currently loaded**
-* **Red overlay**: pregenerator **head / working square**
-* **Green dot**: viewer **center**
-
-### Notes
-
-* The viewer is **live** and updates several times per second.
-* For huge radii, the viewer uses a **scaled grid** (each pixel/cell may represent multiple chunks) so it stays fast and doesn’t spam packets.
-
-**Example:**
-https://github.com/user-attachments/assets/6221de56-73c5-449a-a93b-64b71b9102bf
-
-
-```
-/jubituschunks view 8000
-```
-
-Opens the viewer for an 8000 block radius around the current pregen center (if running) or around you (if not running).
-
----
