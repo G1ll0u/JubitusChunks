@@ -359,3 +359,50 @@ Especially before huge runs.
 ```
 
 ---
+## Chunk Viewer (Real-time debug map)
+
+### Open the viewer
+
+```
+/pregenMill view <radiusBlocks>
+```
+
+Opens a **real-time chunk viewer GUI** for the current dimension.
+
+This is meant for debugging pregeneration: it shows not only “progress”, but also what the server **actually has loaded** right now.
+
+**Works on dedicated servers**: the command is executed server-side, and the GUI opens on the player client.
+
+**Rules / behavior:**
+
+* If a pregen task is running in this dimension:
+
+  * Viewer centers on the **pregen center**
+  * Viewer highlights the **spiral “head” working area** in red (the moving square of chunks your task is currently processing)
+* If no pregen task is running:
+
+  * Viewer centers on **your current position**
+* Supports very large radii (same limits as pregeneration; not limited to 12k)
+
+### Colors / legend
+
+* **Dark grey**: chunk area **not generated**
+* **Grey**: chunk area **generated**
+* **White**: chunk area **currently loaded**
+* **Red overlay**: pregenerator **head / working square**
+* **Green dot**: viewer **center**
+
+### Notes
+
+* The viewer is **live** and updates several times per second.
+* For huge radii, the viewer uses a **scaled grid** (each pixel/cell may represent multiple chunks) so it stays fast and doesn’t spam packets.
+
+**Example:**
+
+```
+/pregenMill view 8000
+```
+
+Opens the viewer for an 8000 block radius around the current pregen center (if running) or around you (if not running).
+
+---
