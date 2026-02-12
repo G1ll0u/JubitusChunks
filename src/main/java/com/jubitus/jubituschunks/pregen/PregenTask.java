@@ -1,20 +1,34 @@
 package com.jubitus.jubituschunks.pregen;
 
+import com.google.common.collect.ImmutableSetMultimap;
 import com.jubitus.jubituschunks.JubitusChunksMod;
 import com.jubitus.jubituschunks.config.JubitusChunksConfig;
+import com.jubitus.jubituschunks.pregen.fun.FollowManager;
 import com.jubitus.jubituschunks.pregen.state.PregenState;
+import net.minecraft.crash.CrashReport;
+import net.minecraft.crash.CrashReportCategory;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.ReportedException;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.gen.ChunkProviderServer;
+import net.minecraftforge.common.ForgeChunkManager;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class PregenTask {
+
+    private int lastFailX = Integer.MIN_VALUE;
+    private int lastFailZ = Integer.MIN_VALUE;
+    private int consecutiveFailsSameCoord = 0;
+
+    private static final int MAX_FAILS_SAME_COORD = 10;
+
 
     // --- viewer/head tracking ---
     private volatile int headChunkX;
@@ -61,6 +75,13 @@ public class PregenTask {
 
 
     private final SpiralChunkIterator iterator;
+
+    // --- "do not unload" awareness (players + Forge forced chunks) ---
+    private final java.util.Set<Long> forcedChunkKeys = new java.util.HashSet<>();
+    private long lastForcedRefreshTick = 0;
+
+    // how often to refresh the forced-chunk list (ticks). 200 = 10 seconds
+    private static final int FORCED_REFRESH_INTERVAL_TICKS = 200;
 
 
     private long lastProgressMsgMs = 0;
@@ -126,12 +147,20 @@ public class PregenTask {
      * @return true if done
      */
     public boolean tickStep() {
+        tickCounter++;
+        cleanupProtection();
         if (world.getMinecraftServer() == null || world.getMinecraftServer().isServerStopped()) return true;
 
-        if (memoryWatchdogMaybeStop()) {
-            // Pause generation this tick (or shutdown was initiated)
+        MemAction mem = memoryWatchdogMaybeStop();
+        if (mem == MemAction.PAUSE) {
+            // pause this tick, keep task alive
             return false;
         }
+        if (mem == MemAction.TERMINATE) {
+            // stop task first (manager will remove it)
+            return true;
+        }
+
 
 
         ChunkProviderServer cps = world.getChunkProvider();
@@ -146,31 +175,30 @@ public class PregenTask {
 
             // Don't consume a spiral step if we're already overloaded
             if (cps.getLoadedChunkCount() > JubitusChunksConfig.GENERAL.maxLoadedChunksSoftLimit) {
+                // IMPORTANT: on ne génère pas plus, on force l’unload + IO à rattraper
+                drainUnloadsAndFlush(cps, false);
                 break;
             }
 
+
             if (!iterator.hasNext()) {
-                String msg = "Mill pregen complete. Steps=" + iterator.getSteps() + "/" + totalSteps
+                String msg = "Jubitus Chunks Pregeneration complete. Steps=" + iterator.getSteps() + "/" + totalSteps
                         + " | skippedExisting=" + skippedExisting;
                 notifyInitiatorAndConsole(msg);
                 PregenState.delete(world);
                 return true;
             }
 
-            SpiralChunkIterator.ChunkCoord coord = nextTodo(cps);
-            if (coord == null) break;
-            processedSteps++;
+            // Peek next spiral coordinate WITHOUT consuming it
+            SpiralChunkIterator.ChunkCoord coord = iterator.peek();
 
             headChunkX = coord.x;
             headChunkZ = coord.z;
-            headStepIndex = iterator.getSteps();
 
 // what “square” moves with the spiral head:
-// preload + bulk is the most useful for debugging loaded chunks
             int preloadR = JubitusChunksConfig.GENERAL.preloadRadiusChunks;
             int bulkR = (JubitusChunksConfig.GENERAL.bulkPopulateEnabled ? this.bulkRUsed : 0);
             headRadiusChunks = preloadR + bulkR;
-
 
             lastWorkX = coord.x;
             lastWorkZ = coord.z;
@@ -178,15 +206,48 @@ public class PregenTask {
             try {
                 boolean processedNow = processOne(cps, coord.x, coord.z);
                 if (!processedNow) {
-                    // soft limit reached (your existing behavior)
+                    // e.g. soft limit logic — do NOT advance spiral
                     break;
                 }
+
+                // ✅ Only now do we consume the spiral step
+                iterator.advance();
+                processedSteps++;
+
+                headStepIndex = iterator.getSteps(); // "completed steps" / next index
+
                 did++;
             } catch (Throwable t) {
                 JubitusChunksMod.LOGGER.error("Error generating chunk {},{} in dim {}",
                         coord.x, coord.z, world.provider.getDimension(), t);
-                did++;
+
+                if (coord.x == lastFailX && coord.z == lastFailZ) {
+                    consecutiveFailsSameCoord++;
+                } else {
+                    lastFailX = coord.x;
+                    lastFailZ = coord.z;
+                    consecutiveFailsSameCoord = 1;
+                }
+
+                if (consecutiveFailsSameCoord >= MAX_FAILS_SAME_COORD) {
+                    JubitusChunksMod.LOGGER.error(
+                            "Chunk {},{} keeps failing ({} times). Skipping this spiral step to avoid stalling.",
+                            coord.x, coord.z, consecutiveFailsSameCoord
+                    );
+
+                    // record this somewhere (file / state NBT) if you want a repair pass
+                    // e.g. PregenState.addFailedCoord(dim, coord.x, coord.z);
+
+                    iterator.advance(); // ⚠️ this creates a hole but avoids infinite lock
+                    processedSteps++;
+                    headStepIndex = iterator.getSteps();
+                    consecutiveFailsSameCoord = 0;
+                }
+
+                break;
             }
+
+
         }
 
         // If we're overloaded, push unloading harder (toggleable)
@@ -195,7 +256,7 @@ public class PregenTask {
         maybeSendProgress();
 
         if (!iterator.hasNext()) {
-            String msg = "Mill pregen complete. Steps=" + iterator.getSteps() + "/" + totalSteps
+            String msg = "Jubitus Chunks Pregeneration complete. Steps=" + iterator.getSteps() + "/" + totalSteps
                     + " | generated=" + generatedChunks
                     + " | populated=" + populatedChunks
                     + " | skippedExisting=" + skippedExisting
@@ -247,7 +308,7 @@ public class PregenTask {
 
         int pct = (int) ((finished * 100L) / Math.max(1L, totalSteps));
 
-        String msg = "Mill pregen: step=" + finished + "/" + totalSteps + " (" + pct + "%)"
+        String msg = "Jubitus Chunks Pregeneration: step=" + finished + "/" + totalSteps + " (" + pct + "%)"
                 + " | loaded=" + world.getChunkProvider().getLoadedChunkCount()
                 + " | " + memString()
                 + " | speed=" + String.format(java.util.Locale.ROOT,
@@ -260,6 +321,12 @@ public class PregenTask {
 
 // Save state whenever we print progress (cheap + crash-safe)
         saveState();
+        // ✅ Très important : flush régulier pour éviter les chunks "fantômes" non écrits sur disque
+        try {
+            ChunkProviderServer cps = world.getChunkProvider();
+            drainUnloadsAndFlush(cps, true);
+        } catch (Throwable ignored) {}
+
 
     }
 
@@ -280,27 +347,40 @@ public class PregenTask {
         // 1) preload neighbors
         for (int dx = -preloadForStep; dx <= preloadForStep; dx++) {
             for (int dz = -preloadForStep; dz <= preloadForStep; dz++) {
-                Chunk c = cps.provideChunk(chunkX + dx, chunkZ + dz);
-                if (c != null) touched.add(c);
+                Chunk c = loadOrGenerateRaw(cps, chunkX + dx, chunkZ + dz);
+                if (c != null) {
+                    touched.add(c);
+                    protectChunk(chunkX + dx, chunkZ + dz, JubitusChunksConfig.GENERAL.keepNeighborChunksLoadedTicks);
+                }
+
             }
         }
 
         // 2) populate (either center only, or bulk area)
         if (!JubitusChunksConfig.GENERAL.bulkPopulateEnabled) {
             // center-only (player-ish)
-            Chunk center = cps.provideChunk(chunkX, chunkZ);
+            Chunk center = loadOrGenerateRaw(cps, chunkX, chunkZ);
             if (center != null) {
                 if (!isAlreadyPopulated(center)) {
                     populateChunk(cps, chunkX, chunkZ, center);
                     generatedChunks++;
+
+                    // ✅ NEW: keep it loaded for a while after population
+                    protectChunk(chunkX, chunkZ, JubitusChunksConfig.GENERAL.keepPopulatedChunksLoadedTicks);
+
                 } else if (skipExisting) {
-                    skippedExisting++; // only if you want verify-mode to count this
+                    skippedExisting++;
                 }
             }
 
+// ✅ IMPORTANT: only unload if NOT protected
             if (JubitusChunksConfig.GENERAL.queueUnloadCenterChunk && center != null) {
-                cps.queueUnload(center);
+                if (!shouldNeverUnload(center.x, center.z)) {
+                    cps.queueUnload(center);
+                }
             }
+
+
 
         } else {
             // bulk mode: populate a whole square per spiral step
@@ -324,21 +404,28 @@ public class PregenTask {
                         continue;
                     }
 
-                    Chunk c = cps.provideChunk(x, z);
+                    Chunk c = loadOrGenerateRaw(cps, x, z);
 
                     if (c != null) {
                         if (!isAlreadyPopulated(c)) {
                             populateChunk(cps, x, z, c);
                             generatedChunks++;
+
+                            // ✅ NEW: keep populated chunk loaded longer
+                            protectChunk(x, z, JubitusChunksConfig.GENERAL.keepPopulatedChunksLoadedTicks);
+
                         } else if (skipExisting) {
-                            // VERIFY mode counts "already populated" as skipped
                             skippedExisting++;
                         }
 
                         if (JubitusChunksConfig.GENERAL.queueUnloadCenterChunk) {
-                            cps.queueUnload(c);
+                            if (!shouldNeverUnload(c.x, c.z)) {
+                                cps.queueUnload(c);
+                            }
                         }
+
                     }
+
                 }
             }
 
@@ -347,25 +434,14 @@ public class PregenTask {
         // 3) unload touched neighbors too (very important for huge radiuses)
         if (JubitusChunksConfig.GENERAL.queueUnloadPreloadedNeighbors) {
             for (Chunk c : touched) {
-                cps.queueUnload(c);
+                if (!shouldNeverUnload(c.x, c.z)) {
+                    cps.queueUnload(c);
+                }
             }
         }
+
 
         return true;
-    }
-    private SpiralChunkIterator.ChunkCoord nextTodo(ChunkProviderServer cps) {
-        while (iterator.hasNext()) {
-            SpiralChunkIterator.ChunkCoord c = iterator.next();
-
-            // SKIP mode: don't even load existing chunks
-            if (skipExisting && !verifyExisting && cps.isChunkGeneratedAt(c.x, c.z)) {
-                skippedExisting++;
-                continue;
-            }
-
-            return c;
-        }
-        return null;
     }
 
 
@@ -380,11 +456,15 @@ public class PregenTask {
 
         // Mark nearly everything unloadable except the small working window
         for (Chunk c : cps.getLoadedChunks()) {
+            if (shouldNeverUnload(c.x, c.z)) continue;
+
             if (Math.abs(c.x - keepCenterX) <= keepR && Math.abs(c.z - keepCenterZ) <= keepR) {
                 continue;
             }
             cps.queueUnload(c);
         }
+
+
 
         // Optional: run extra unload passes to catch up quicker
         int passes = JubitusChunksConfig.GENERAL.extraUnloadPassesWhenOverLimit;
@@ -446,6 +526,9 @@ public class PregenTask {
 
         s.generatedChunks = generatedChunks;
         s.skippedExisting = skippedExisting;
+        s.radiusSteps = iterator.getRadiusSteps();
+        s.strideChunks = iterator.getStrideChunks();
+
         PregenState.save(world, s);
     }
 
@@ -462,9 +545,9 @@ public class PregenTask {
     }
 
     private static boolean isAlreadyPopulated(Chunk c) {
-
-        return c.isTerrainPopulated();
+        return c.isTerrainPopulated() && c.isLightPopulated();
     }
+
     private void populateChunk(ChunkProviderServer cps, int chunkX, int chunkZ, Chunk c) {
         if (!populateViaGenerator) {
             c.populate(cps, cps.chunkGenerator);
@@ -475,11 +558,56 @@ public class PregenTask {
         cps.chunkGenerator.populate(chunkX, chunkZ);
         net.minecraftforge.event.ForgeEventFactory.onChunkPopulate(false, cps.chunkGenerator, world, world.rand, chunkX, chunkZ, false);
 
-        // IMPORTANT: mark flags, otherwise MC may try to populate again later
         c.setTerrainPopulated(true);
         c.setLightPopulated(true);
         c.markDirty();
     }
+
+
+    private Chunk loadOrGenerateRaw(ChunkProviderServer cps, int x, int z) {
+        // 1) déjà chargé
+        Chunk loaded = cps.getLoadedChunk(x, z);
+        if (loaded != null) return loaded;
+
+        Chunk chunk = null;
+
+        // 2) existe sur disque -> on le charge SANS appeler cps.loadChunk/provideChunk (sinon ça populate)
+        try {
+            if (cps.chunkLoader != null && cps.chunkLoader.isChunkGeneratedAt(x, z)) {
+                chunk = cps.chunkLoader.loadChunk(cps.world, x, z);
+                if (chunk != null) {
+                    chunk.setLastSaveTime(cps.world.getTotalWorldTime());
+                    // important : recrée les structures (comme vanilla le fait au chargement)
+                    cps.chunkGenerator.recreateStructures(chunk, x, z);
+                }
+            }
+        } catch (Throwable t) {
+            JubitusChunksMod.LOGGER.warn("Raw load failed for chunk {},{} dim {}", x, z, cps.world.provider.getDimension(), t);
+        }
+
+        // 3) sinon on génère le terrain (sans populate)
+        if (chunk == null) {
+            try {
+                chunk = cps.chunkGenerator.generateChunk(x, z);
+            } catch (Throwable throwable) {
+                CrashReport crashreport = CrashReport.makeCrashReport(throwable, "Exception generating new chunk (raw)");
+                CrashReportCategory cat = crashreport.makeCategory("Chunk to be generated (raw)");
+                cat.addCrashSection("Location", String.format("%d,%d", x, z));
+                cat.addCrashSection("Generator", cps.chunkGenerator);
+                throw new ReportedException(crashreport);
+            }
+        }
+
+        // 4) on l’insère comme "loaded" + onLoad, MAIS PAS populate
+        long key = ChunkPos.asLong(x, z);
+        cps.loadedChunks.put(key, chunk);
+        chunk.onLoad();
+        chunk.unloadQueued = false;
+
+        return chunk;
+    }
+
+
     private static String formatDuration(long seconds) {
         long s = Math.max(0, seconds);
         long h = s / 3600; s %= 3600;
@@ -488,12 +616,12 @@ public class PregenTask {
         if (m > 0) return m + "m" + s + "s";
         return s + "s";
     }
-    private boolean memoryWatchdogMaybeStop() {
-        if (!JubitusChunksConfig.GENERAL.stopServerOnLowMemory) return false;
+    private MemAction memoryWatchdogMaybeStop() {
+        if (!JubitusChunksConfig.GENERAL.stopServerOnLowMemory) return MemAction.NONE;
 
         long now = System.currentTimeMillis();
         long intervalMs = JubitusChunksConfig.GENERAL.memoryCheckIntervalSeconds * 1000L;
-        if (now - lastMemCheckMs < intervalMs) return false;
+        if (now - lastMemCheckMs < intervalMs) return MemAction.NONE;
         lastMemCheckMs = now;
 
         Runtime rt = Runtime.getRuntime();
@@ -508,25 +636,25 @@ public class PregenTask {
             gcRequested = false;
             usedBeforeGc = 0;
             consecutiveGcFailures = 0;
-            return false;
+            return MemAction.NONE;
         }
+
 
         // Critical: first time -> request GC and wait for next interval to measure
         if (!gcRequested) {
             gcRequested = true;
             usedBeforeGc = used;
 
-            // Push unload pressure immediately too (helps more than GC sometimes)
             try {
                 ChunkProviderServer cps = world.getChunkProvider();
                 applyUnloadPressure(cps, centerChunkX, centerChunkZ);
             } catch (Throwable ignored) {}
 
-            System.gc(); // stop-the-world; but better than OOM
-            String msg = "Mill pregen: memory critical (" + usedPct + "% of heap). Forcing GC + extra unload pressure...";
-            notifyInitiatorAndConsole(msg);
-            return true; // pause work this check tick
+            System.gc();
+            notifyInitiatorAndConsole("Jubitus Chunks Pregeneration: memory critical (" + usedPct + "% of heap). Forcing GC + extra unload pressure...");
+            return MemAction.PAUSE; // pause this tick
         }
+
 
         // Second (or later) check after GC request: measure recovery
         long usedAfter = used;
@@ -536,13 +664,13 @@ public class PregenTask {
         int minFreedMb = JubitusChunksConfig.GENERAL.minRecoveredAfterGcMB;
         if (freedMb < minFreedMb) {
             consecutiveGcFailures++;
-            String msg = "Mill pregen: GC recovery too low (freed " + freedMb + "MB, need " + minFreedMb + "MB). "
+            String msg = "Jubitus Chunks Pregeneration: GC recovery too low (freed " + freedMb + "MB, need " + minFreedMb + "MB). "
                     + "Failure " + consecutiveGcFailures + "/" + JubitusChunksConfig.GENERAL.consecutiveGcFailuresToStop
                     + ". UsedHeap=" + usedPct + "% " + memString();
             notifyInitiatorAndConsole(msg);
         } else {
             consecutiveGcFailures = 0;
-            notifyInitiatorAndConsole("Mill pregen: GC recovered " + freedMb + "MB. Continuing.");
+            notifyInitiatorAndConsole("Jubitus Chunks Pregeneration: GC recovered " + freedMb + "MB. Continuing.");
         }
 
         // Reset GC request state so we can do another GC cycle if still critical
@@ -550,13 +678,19 @@ public class PregenTask {
         usedBeforeGc = 0;
 
         if (consecutiveGcFailures >= JubitusChunksConfig.GENERAL.consecutiveGcFailuresToStop) {
+
             // Save pregen state BEFORE shutdown
             saveState();
+            try {
+                ChunkProviderServer cps = world.getChunkProvider();
+                drainUnloadsAndFlush(cps, true);
+            } catch (Throwable ignored) {}
+
 
             String stopMsg =
-                    "Mill pregen stopped the server to prevent an out-of-memory crash.\n"
+                    "Jubitus Chunks Pregeneration stopped the server to prevent an out-of-memory crash.\n"
                             + "Heap usage stayed critical and GC could not free enough memory.\n"
-                            + "Restart the game/server and run /pregenMill resume to continue.";
+                            + "Restart the game/server and run /jubituschunks resume to continue.";
 
             notifyInitiatorAndConsole(stopMsg);
 
@@ -564,15 +698,18 @@ public class PregenTask {
             try {
                 server.initiateShutdown();
             } catch (Throwable t) {
-                // Fallback: stopServer exists in many 1.12 servers
                 try {
                     server.stopServer();
                 } catch (Throwable ignored) {}
             }
-            return true;
+
+            // IMPORTANT: terminate the pregen task immediately,
+            // so it is removed from PregenManager before shutdown proceeds.
+            return MemAction.TERMINATE;
         }
 
-        return true; // while we're in critical mode, we pause generating on check ticks
+
+        return MemAction.PAUSE; // while we're in critical mode, pause generating on check ticks
     }
     public int getHeadChunkX() { return headChunkX; }
     public int getHeadChunkZ() { return headChunkZ; }
@@ -585,5 +722,124 @@ public class PregenTask {
     public long getTotalSteps()  { return totalSteps; }
     public long getGeneratedChunks() { return generatedChunks; }
     public long getSkippedExisting() { return skippedExisting; }
+    private enum MemAction {
+        NONE,
+        PAUSE,
+        TERMINATE
+    }
+    // chunks we promise not to unload until a certain server tick
+    private final java.util.Map<Long, Long> protectUntilTick = new java.util.HashMap<>();
+    private long tickCounter = 0;
+
+    private static long chunkKey(int x, int z) {
+        return (((long)x) << 32) ^ (z & 0xffffffffL);
+    }
+
+    private void protectChunk(int x, int z, int ticks) {
+        if (ticks <= 0) return;
+        long key = chunkKey(x, z);
+        long until = tickCounter + ticks;
+        Long prev = protectUntilTick.get(key);
+        if (prev == null || prev < until) protectUntilTick.put(key, until);
+    }
+
+    private boolean isProtected(int x, int z) {
+        Long until = protectUntilTick.get(chunkKey(x, z));
+        return until != null && until > tickCounter;
+    }
+
+    private void cleanupProtection() {
+        // cheap cleanup occasionally
+        if ((tickCounter & 31) != 0) return; // every 32 ticks
+        java.util.Iterator<java.util.Map.Entry<Long, Long>> it = protectUntilTick.entrySet().iterator();
+        while (it.hasNext()) {
+            if (it.next().getValue() <= tickCounter) it.remove();
+        }
+    }
+    public void requestStopAndFlush() {
+        // stop generating immediately, but keep world valid
+        saveState();
+
+        try {
+            ChunkProviderServer cps = world.getChunkProvider();
+
+            // Force chunk saves (flush dirty chunks)
+            cps.saveChunks(true);
+
+            // Also flush any pending threaded IO work
+            net.minecraft.world.storage.ThreadedFileIOBase.getThreadedIOInstance().waitForFinish();
+        } catch (Throwable t) {
+            JubitusChunksMod.LOGGER.warn("Failed to flush chunk IO on stop", t);
+        }
+    }
+    private void refreshForcedChunksMaybe() {
+        if (tickCounter - lastForcedRefreshTick < FORCED_REFRESH_INTERVAL_TICKS) return;
+        lastForcedRefreshTick = tickCounter;
+
+        forcedChunkKeys.clear();
+
+        try {
+            // keySet = chunks that are held by ForgeChunkManager tickets (mod force-load)
+            ImmutableSetMultimap<ChunkPos, ForgeChunkManager.Ticket> mm =
+                    ForgeChunkManager.getPersistentChunksFor(world);
+
+            for (ChunkPos pos : mm.keySet()) {
+                forcedChunkKeys.add(chunkKey(pos.x, pos.z));
+            }
+        } catch (Throwable t) {
+            // don't crash pregen if some mod does weird stuff
+            JubitusChunksMod.LOGGER.warn("Failed to refresh forced chunk list", t);
+        }
+    }
+
+    private boolean isForceLoadedByMods(int x, int z) {
+        // keep list reasonably fresh
+        refreshForcedChunksMaybe();
+        return forcedChunkKeys.contains(chunkKey(x, z));
+    }
+
+    private boolean isInAnyPlayerView(int x, int z) {
+        int vd = server.getPlayerList().getViewDistance(); // chunks
+        for (EntityPlayerMP p : server.getPlayerList().getPlayers()) {
+            if (p.dimension != world.provider.getDimension()) continue;
+
+            // ✅ Ignore players who are in "follow" mode so they don't block unloading
+            if (FollowManager.isWatcher(p.getUniqueID())) continue;
+
+            int dx = Math.abs(p.chunkCoordX - x);
+            int dz = Math.abs(p.chunkCoordZ - z);
+            if (dx <= vd && dz <= vd) return true;
+        }
+        return false;
+    }
+
+
+    /** True if we should NEVER queueUnload this chunk. */
+    private boolean shouldNeverUnload(int x, int z) {
+        if (isProtected(x, z)) return true;
+        if (isForceLoadedByMods(x, z)) return true;
+        if (isInAnyPlayerView(x, z)) return true;
+        return false;
+    }
+    private void drainUnloadsAndFlush(ChunkProviderServer cps, boolean forceAllSaves) {
+        try {
+            // 1) Laisser ChunkProviderServer traiter la queue d'unload
+            // (vanilla: ~100 unload max par tick)
+            for (int i = 0; i < 20; i++) {
+                cps.tick();
+            }
+
+            // 2) Sauver les chunks encore chargés (si nécessaire)
+            cps.saveChunks(forceAllSaves);
+
+            // 3) Flush du loader (écritures disque)
+            cps.flushToDisk();
+
+            // 4) Finir l'IO thread (important en moddé)
+            net.minecraft.world.storage.ThreadedFileIOBase.getThreadedIOInstance().waitForFinish();
+        } catch (Throwable t) {
+            JubitusChunksMod.LOGGER.warn("Failed to drain unloads/flush IO", t);
+        }
+    }
 
 }

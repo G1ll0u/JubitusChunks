@@ -16,10 +16,12 @@ public class PregenManager {
 
     public static boolean start(MinecraftServer server, WorldServer world, BlockPos start, int radiusBlocks,
                                 EntityPlayerMP initiator, boolean skipExisting) {
+
         int dim = world.provider.getDimension();
         if (TASKS.containsKey(dim)) return false;
 
         boolean verifyExisting = JubitusChunksConfig.GENERAL.verifyExistingChunks;
+        if (skipExisting) verifyExisting = true;
         boolean populateViaGenerator = JubitusChunksConfig.GENERAL.populateViaGenerator;
 
         PregenTask task = new PregenTask(server, world, start, radiusBlocks, initiator,
@@ -31,8 +33,21 @@ public class PregenManager {
 
 
     public static boolean stop(int dimension) {
-        return TASKS.remove(dimension) != null;
+        PregenTask t = TASKS.remove(dimension);
+        if (t == null) return false;
+
+        try {
+            t.requestStopAndFlush();
+        } catch (Throwable ignored) {}
+
+        return true;
     }
+    public static void stopAllAndFlush() {
+        for (Integer dim : new java.util.ArrayList<>(TASKS.keySet())) {
+            stop(dim); // calls requestStopAndFlush()
+        }
+    }
+
 
     public static void tick() {
         for (Map.Entry<Integer, PregenTask> e : TASKS.entrySet()) {
@@ -49,6 +64,9 @@ public class PregenManager {
                                          boolean verifyExisting,
                                          boolean populateViaGenerator,
                                          long stepIndex) {
+
+        if (skipExisting) verifyExisting = true;
+
         int dim = world.provider.getDimension();
         if (TASKS.containsKey(dim)) return false;
 

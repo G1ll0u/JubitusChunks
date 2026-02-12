@@ -5,6 +5,7 @@ import com.jubitus.jubituschunks.config.JubitusChunksConfig;
 import com.jubitus.jubituschunks.net.NetworkHandler;
 import com.jubitus.jubituschunks.net.msg.PacketViewOpen;
 import com.jubitus.jubituschunks.pregen.PregenManager;
+import com.jubitus.jubituschunks.pregen.fun.FollowManager;
 import com.jubitus.jubituschunks.pregen.state.PregenState;
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.CommandException;
@@ -27,8 +28,10 @@ public class CommandJubitusChunks extends CommandBase {
     public String getUsage(ICommandSender sender) {
         return "/jubituschunks <radiusBlocks> [x] [z] [skipExisting|force]\n"
                 + "/jubituschunks stop\n"
-                + "/jubituschunks resume [stepIndex] [x] [z]"
-        + "/jubituschunks view <radiusBlocks>\n";
+                + "/jubituschunks resume [stepIndex] [x] [z]\n"
+                + "/jubituschunks view <radiusBlocks>\n"
+                + "/jubituschunks follow\n";
+
     }
 
     @Override
@@ -38,6 +41,26 @@ public class CommandJubitusChunks extends CommandBase {
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
+        if (args.length >= 1 && "follow".equalsIgnoreCase(args[0])) {
+            if (!(sender.getCommandSenderEntity() instanceof EntityPlayerMP)) {
+                sender.sendMessage(new TextComponentString("This command must be run by a player."));
+                return;
+            }
+
+            EntityPlayerMP p = (EntityPlayerMP) sender.getCommandSenderEntity();
+
+            // Only makes sense if a task exists in this dimension
+            if (PregenManager.getTask(p.dimension) == null) {
+                sender.sendMessage(new TextComponentString("No pregen task running in this dimension."));
+                return;
+            }
+
+            boolean enabled = FollowManager.toggle(p);
+            sender.sendMessage(new TextComponentString(enabled
+                    ? "Follow enabled: you will be teleported to the pregen head."
+                    : "Follow disabled."));
+            return;
+        }
 
         if (args.length >= 1 && "view".equalsIgnoreCase(args[0])) {
             if (!(sender.getCommandSenderEntity() instanceof EntityPlayerMP)) {
@@ -78,23 +101,24 @@ public class CommandJubitusChunks extends CommandBase {
             boolean verifyExisting = st.verifyExisting;
             boolean populateViaGenerator = st.populateViaGenerator;
 
-            long stepIndex = st.spiralSteps;
 
-// Optional: force safe defaults on resume (you can keep this if you want)
-            skipExisting = true;          // recommended
-            verifyExisting = true;        // recommended if you want to repair half-finished chunks
-// populateViaGenerator stays whatever was used before
+// Use the REAL iterator max steps from saved state when available
+            int radiusSteps = (st.radiusSteps > 0) ? st.radiusSteps
+                    : (int) Math.ceil(chunkRadius / 1.0); // fallback for old saves
 
-
-            long d = (long) chunkRadius * 2L + 1L;
+            long d = (long) radiusSteps * 2L + 1L;
             long maxSteps = d * d;
+
+
+            long stepIndex = 0L; // <-- default: restart spiral safely
 
             if (args.length >= 2) {
                 stepIndex = parseLong(args[1], 0, maxSteps);
             } else {
-                // clamp loaded value too (in case radius changed or file got edited)
-                stepIndex = Math.max(0, Math.min(stepIndex, maxSteps));
+                stepIndex = Math.max(0, Math.min(st.spiralSteps, maxSteps));
             }
+
+
 
             // /pregenMill resume 405101 <x> <z>  (block coords)
             if (args.length >= 4) {
@@ -121,7 +145,7 @@ public class CommandJubitusChunks extends CommandBase {
 
             if (started) {
                 sender.sendMessage(new TextComponentString(
-                        "Resumed mill pregen at step=" + stepIndex +
+                        "Resumed jubitus chunks pregen (safe mode) at step=" + stepIndex +
                                 " centerChunk=" + cx + "," + cz +
                                 " radiusBlocks=" + radiusBlocks +
                                 " skipExisting=" + skipExisting +
@@ -139,7 +163,7 @@ public class CommandJubitusChunks extends CommandBase {
             // stop in sender's dimension if possible; otherwise overworld
             WorldServer world = getWorldForSender(server, sender);
             boolean stopped = PregenManager.stop(world.provider.getDimension());
-            sender.sendMessage(new TextComponentString(stopped ? "Mill pregen stopped." : "No mill pregen running here."));
+            sender.sendMessage(new TextComponentString(stopped ? "jubitus chunks pregen stopped." : "No jubitus chunks pregen running here."));
             return;
         }
 

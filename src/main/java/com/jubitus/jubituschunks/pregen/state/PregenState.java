@@ -22,6 +22,9 @@ public class PregenState {
     public long generatedChunks;
     public long skippedExisting;
 
+    public int radiusSteps;     // NEW
+    public int strideChunks;    // NEW
+
     public NBTTagCompound toNBT() {
         NBTTagCompound n = new NBTTagCompound();
         n.setInteger("dim", dim);
@@ -36,6 +39,9 @@ public class PregenState {
 
         n.setLong("generated", generatedChunks);
         n.setLong("skippedExisting", skippedExisting);
+
+        n.setInteger("radiusSteps", radiusSteps);
+        n.setInteger("strideChunks", strideChunks);
         return n;
     }
 
@@ -55,6 +61,9 @@ public class PregenState {
 
         s.generatedChunks = n.getLong("generated");
         s.skippedExisting = n.getLong("skippedExisting");
+        s.radiusSteps  = n.hasKey("radiusSteps")  ? n.getInteger("radiusSteps")  : 0;
+        s.strideChunks = n.hasKey("strideChunks") ? n.getInteger("strideChunks") : 1;
+
         return s;
     }
 
@@ -96,4 +105,5 @@ public class PregenState {
             JubitusChunksMod.LOGGER.error("Failed to delete pregen state", e);
         }
     }
+
 }

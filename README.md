@@ -282,7 +282,7 @@ If you generate with one set of worldgen mods, then change mods later:
 * you’ll get borders / mismatches
 
 In that case you might choose `force`, but that’s slow and can be messy so it's not advised.
-When I generate a world, I prepare it by generating small radiuses and check if everything looks good, at this moment, I start the pregeneration
+When I generate a world, I prepare it by generating small radiuses and check if everything looks good, at this moment, I start the real big pregeneration
 
 ### Always keep backups
 ---

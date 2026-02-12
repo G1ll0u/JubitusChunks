@@ -12,6 +12,14 @@ public class JubitusChunksConfig {
     public static class General {
 
         @Config.Comment({
+                "If true, the mod will automatically resume pregeneration after server restart",
+                "if a saved pregen state file exists (jubituschunks/pregen_dimX.dat).",
+                "This is useful when stopServerOnLowMemory triggers or after crashes."
+        })
+        public boolean autoResumePregenOnStartup = false;
+
+
+        @Config.Comment({
                 "Maximum spiral STEPS to process per server tick.",
                 "A 'step' is one spiral position (NOT always 1 chunk).",
                 "If bulkPopulateEnabled=true, one step can populate a whole square of chunks (see bulkRadiusChunks).",
@@ -37,7 +45,7 @@ public class JubitusChunksConfig {
                 "to allow the server to unload chunks (prevents huge memory usage)."
         })
         @Config.RangeInt(min = 64, max = 50000)
-        public int maxLoadedChunksSoftLimit = 12000;
+        public int maxLoadedChunksSoftLimit = 4200;
 
         @Config.Comment({
                 "If true, queueUnload() is called on the center chunk after it is generated/populated.",
@@ -62,7 +70,7 @@ public class JubitusChunksConfig {
                 "Example: bulkRadiusChunks=1 -> 3x3 chunks per spiral step.",
                 "This makes generation much faster, but is less 'player-like'."
         })
-        public boolean bulkPopulateEnabled = true;
+        public boolean bulkPopulateEnabled = false;
 
         @Config.Comment({
                 "Radius (in chunks) of the square to populate per spiral step when bulkPopulateEnabled=true.",
@@ -84,7 +92,7 @@ public class JubitusChunksConfig {
                 "Used only for adaptiveStepCap."
         })
         @Config.RangeInt(min = 10, max = 500)
-        public int unloadBudgetPerTick = 100;
+        public int unloadBudgetPerTick = 50;
 
         @Config.Comment({
                 "Extra times to call ChunkProviderServer.tick() when overloaded (to unload faster).",
@@ -98,7 +106,7 @@ public class JubitusChunksConfig {
                 "Set lower for less RAM use."
         })
         @Config.RangeInt(min = 128, max = 50000)
-        public int loadedChunksHardLimit = 1800;
+        public int loadedChunksHardLimit = 2500;
 
         @Config.Comment({
                 "If true, when loadedChunksHardLimit is exceeded, queueUnload() all loaded chunks outside keepLoadedRadiusChunks.",
@@ -112,19 +120,19 @@ public class JubitusChunksConfig {
                 "Recommended: keepLoadedRadiusChunks >= (preloadRadiusChunks + bulkRadiusChunks) in bulk mode."
         })
         @Config.RangeInt(min = 0, max = 32)
-        public int keepLoadedRadiusChunks = 6;
+        public int keepLoadedRadiusChunks = 7;
         @Config.Comment({
                 "If true, pregeneration will SKIP chunks that already exist on disk (already generated).",
                 "This makes expanding an existing world much faster because it won't load/populate old chunks.",
                 "WARNING: If you changed worldgen mods/settings, skipping means old chunks won't get 'updated'."
         })
-        public boolean skipAlreadyGeneratedChunks = true;
+        public boolean skipAlreadyGeneratedChunks = false;
         @Config.Comment({
                 "When skipAlreadyGeneratedChunks=true:",
                 "false = SKIP mode: skip chunks purely via isChunkGeneratedAt() (fastest, no loading).",
                 "true  = VERIFY mode: load the chunk and only populate if it is NOT populated yet (slower, safer after crashes)."
         })
-        public boolean verifyExistingChunks = false;
+        public boolean verifyExistingChunks = true;
         @Config.Comment({
                 "Population method:",
                 "false = use Chunk.populate(provider, generator) (vanilla-style).",
@@ -135,7 +143,7 @@ public class JubitusChunksConfig {
         @Config.Comment({
                 "If true, the pregenerator will stop the server cleanly when memory is critically high",
                 "and a forced GC does not free enough heap (see minRecoveredAfterGcMB).",
-                "This prevents OOM and allows you to /pregenMill resume after restart."
+                "This prevents OOM and allows you to /jubituschunks resume after restart."
         })
         public boolean stopServerOnLowMemory = true;
 
@@ -163,6 +171,19 @@ public class JubitusChunksConfig {
         })
         @Config.RangeInt(min = 1, max = 20)
         public int consecutiveGcFailuresToStop = 3;
+        @Config.Comment({
+                "How many ticks to KEEP a chunk loaded after we populate it before allowing unload.",
+                "20 ticks = 1 second. Use 40-200 for heavy modpacks."
+        })
+        @Config.RangeInt(min = 0, max = 1200)
+        public int keepPopulatedChunksLoadedTicks = 220;
+
+        @Config.Comment({
+                "How many ticks to KEEP neighbor/preloaded chunks loaded after processing a step.",
+                "Usually lower than keepPopulatedChunksLoadedTicks."
+        })
+        @Config.RangeInt(min = 0, max = 1200)
+        public int keepNeighborChunksLoadedTicks = 90;
 
     }
 

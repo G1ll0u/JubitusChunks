@@ -22,6 +22,8 @@ public class SpiralChunkIterator {
     private int x = 0, z = 0;
     private int dx = 0, dz = -1;
 
+    public int getRadiusSteps() { return r; }
+    public int getStrideChunks() { return stride; }
 
 
     public SpiralChunkIterator(int centerX, int centerZ, int radiusSteps, int strideChunks) {
@@ -42,12 +44,8 @@ public class SpiralChunkIterator {
     }
 
     public ChunkCoord next() {
-        if (!hasNext()) throw new java.util.NoSuchElementException();
-
-        // IMPORTANT: multiply spiral coordinates by stride so we jump farther each step
-        ChunkCoord out = new ChunkCoord(cx + x * stride, cz + z * stride);
-        steps++;
-        advanceSpiral();
+        ChunkCoord out = peek();
+        advance();
         return out;
     }
 
@@ -62,12 +60,19 @@ public class SpiralChunkIterator {
     }
 
     /**
-     * Jump the iterator so that the *next* call to next() yields the chunk at index stepIndex.
+     * Jump the iterator so that the *next* yield is the chunk at index stepIndex.
      * stepIndex=0 -> center chunk.
+     *
+     * Invariant after setSteps: (x,z) equals coordAt(steps), and (dx,dz) is the
+     * direction needed to advance from coordAt(steps) to coordAt(steps+1).
      */
     public void setSteps(long stepIndex) {
         if (stepIndex < 0) stepIndex = 0;
-        if (stepIndex > max) stepIndex = max;
+        if (stepIndex >= max) {          // clamp to END, not "one past + compute"
+            steps = max;
+            x = 0; z = 0; dx = 0; dz = -1;
+            return;
+        }
 
         this.steps = stepIndex;
 
@@ -76,16 +81,16 @@ public class SpiralChunkIterator {
             return;
         }
 
-        // We want the internal (x,z,dx,dz) state corresponding to "about to yield stepIndex"
-        // That equals the spiral coordinate at stepIndex, and direction equals (coord(stepIndex)-coord(stepIndex-1)).
         int[] cur = coordAt(stepIndex);
-        int[] prev = coordAt(stepIndex - 1);
-
         x = cur[0];
         z = cur[1];
-        dx = cur[0] - prev[0];
-        dz = cur[1] - prev[1];
+
+        int[] nxt = coordAt(stepIndex + 1);
+        dx = nxt[0] - cur[0];
+        dz = nxt[1] - cur[1];
     }
+
+
 
     /**
      * Standard square spiral coordinate for index n:
@@ -126,4 +131,17 @@ public class SpiralChunkIterator {
 
         return new int[]{x, z};
     }
+    public ChunkCoord peek() {
+        if (!hasNext()) throw new java.util.NoSuchElementException();
+        return new ChunkCoord(cx + x * stride, cz + z * stride);
+    }
+
+    public void advance() {
+        if (!hasNext()) throw new java.util.NoSuchElementException();
+        steps++;
+        advanceSpiral();
+    }
+
+
+
 }
