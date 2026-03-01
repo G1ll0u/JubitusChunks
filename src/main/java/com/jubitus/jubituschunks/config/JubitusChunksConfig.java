@@ -63,7 +63,7 @@ public class JubitusChunksConfig {
                 "How often (in seconds) to send progress messages to the command sender."
         })
         @Config.RangeInt(min = 1, max = 3600)
-        public int progressMessageIntervalSeconds = 5;
+        public int progressMessageIntervalSeconds = 10;
         @Config.Comment({
                 "If true, each spiral step will populate and mark a whole square area as DONE,",
                 "instead of only the center chunk.",
@@ -106,7 +106,7 @@ public class JubitusChunksConfig {
                 "Set lower for less RAM use."
         })
         @Config.RangeInt(min = 128, max = 50000)
-        public int loadedChunksHardLimit = 1400;
+        public int loadedChunksHardLimit = 1600;
 
         @Config.Comment({
                 "If true, when loadedChunksHardLimit is exceeded, queueUnload() all loaded chunks outside keepLoadedRadiusChunks.",
