@@ -1,6 +1,7 @@
 package com.jubitus.jubituschunks.pregen;
 
 import com.jubitus.jubituschunks.config.JubitusChunksConfig;
+import com.jubitus.jubituschunks.pregen.state.PregenState;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.math.BlockPos;
@@ -21,7 +22,6 @@ public class PregenManager {
         if (TASKS.containsKey(dim)) return false;
 
         boolean verifyExisting = JubitusChunksConfig.GENERAL.verifyExistingChunks;
-        if (skipExisting) verifyExisting = true;
         boolean populateViaGenerator = JubitusChunksConfig.GENERAL.populateViaGenerator;
 
         PregenTask task = new PregenTask(server, world, start, radiusBlocks, initiator,
@@ -32,7 +32,7 @@ public class PregenManager {
     }
 
 
-    public static boolean stop(int dimension) {
+    public static boolean pause(int dimension) {
         PregenTask t = TASKS.remove(dimension);
         if (t == null) return false;
 
@@ -42,9 +42,21 @@ public class PregenManager {
 
         return true;
     }
-    public static void stopAllAndFlush() {
+    public static boolean cancel(WorldServer world) {
+        int dim = world.provider.getDimension();
+
+        // Stop task and flush chunks (requestStopAndFlush saves state)
+        boolean wasRunning = pause(dim);
+
+        // Cancel means: DO NOT allow resume/auto-resume -> delete the saved state file
+        PregenState.delete(world);
+
+        return wasRunning;
+    }
+
+    public static void pauseAllAndFlush() {
         for (Integer dim : new java.util.ArrayList<>(TASKS.keySet())) {
-            stop(dim); // calls requestStopAndFlush()
+            pause(dim); // calls requestStopAndFlush()
         }
     }
 
@@ -64,8 +76,6 @@ public class PregenManager {
                                          boolean verifyExisting,
                                          boolean populateViaGenerator,
                                          long stepIndex) {
-
-        if (skipExisting) verifyExisting = true;
 
         int dim = world.provider.getDimension();
         if (TASKS.containsKey(dim)) return false;

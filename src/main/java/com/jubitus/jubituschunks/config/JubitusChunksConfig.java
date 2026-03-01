@@ -37,7 +37,7 @@ public class JubitusChunksConfig {
                 "but memory usage increases very quickly."
         })
         @Config.RangeInt(min = 0, max = 8)
-        public int preloadRadiusChunks = 3;
+        public int preloadRadiusChunks = 2;
 
 
         @Config.Comment({
@@ -45,7 +45,7 @@ public class JubitusChunksConfig {
                 "to allow the server to unload chunks (prevents huge memory usage)."
         })
         @Config.RangeInt(min = 64, max = 50000)
-        public int maxLoadedChunksSoftLimit = 4200;
+        public int maxLoadedChunksSoftLimit = 2400;
 
         @Config.Comment({
                 "If true, queueUnload() is called on the center chunk after it is generated/populated.",
@@ -70,7 +70,7 @@ public class JubitusChunksConfig {
                 "Example: bulkRadiusChunks=1 -> 3x3 chunks per spiral step.",
                 "This makes generation much faster, but is less 'player-like'."
         })
-        public boolean bulkPopulateEnabled = false;
+        public boolean bulkPopulateEnabled = true;
 
         @Config.Comment({
                 "Radius (in chunks) of the square to populate per spiral step when bulkPopulateEnabled=true.",
@@ -92,7 +92,7 @@ public class JubitusChunksConfig {
                 "Used only for adaptiveStepCap."
         })
         @Config.RangeInt(min = 10, max = 500)
-        public int unloadBudgetPerTick = 50;
+        public int unloadBudgetPerTick = 100;
 
         @Config.Comment({
                 "Extra times to call ChunkProviderServer.tick() when overloaded (to unload faster).",
@@ -106,7 +106,7 @@ public class JubitusChunksConfig {
                 "Set lower for less RAM use."
         })
         @Config.RangeInt(min = 128, max = 50000)
-        public int loadedChunksHardLimit = 2500;
+        public int loadedChunksHardLimit = 1400;
 
         @Config.Comment({
                 "If true, when loadedChunksHardLimit is exceeded, queueUnload() all loaded chunks outside keepLoadedRadiusChunks.",
@@ -120,7 +120,7 @@ public class JubitusChunksConfig {
                 "Recommended: keepLoadedRadiusChunks >= (preloadRadiusChunks + bulkRadiusChunks) in bulk mode."
         })
         @Config.RangeInt(min = 0, max = 32)
-        public int keepLoadedRadiusChunks = 7;
+        public int keepLoadedRadiusChunks = 3;
         @Config.Comment({
                 "If true, pregeneration will SKIP chunks that already exist on disk (already generated).",
                 "This makes expanding an existing world much faster because it won't load/populate old chunks.",
@@ -132,6 +132,7 @@ public class JubitusChunksConfig {
                 "false = SKIP mode: skip chunks purely via isChunkGeneratedAt() (fastest, no loading).",
                 "true  = VERIFY mode: load the chunk and only populate if it is NOT populated yet (slower, safer after crashes)."
         })
+
         public boolean verifyExistingChunks = true;
         @Config.Comment({
                 "Population method:",
@@ -157,7 +158,7 @@ public class JubitusChunksConfig {
                 "Critical heap usage percent (of -Xmx). If used heap >= this percent, the watchdog triggers."
         })
         @Config.RangeInt(min = 50, max = 99)
-        public int criticalHeapUsedPercent = 97;
+        public int criticalHeapUsedPercent = 95;
 
         @Config.Comment({
                 "When memory is critical, the watchdog triggers a GC and checks how much was freed.",
@@ -176,14 +177,14 @@ public class JubitusChunksConfig {
                 "20 ticks = 1 second. Use 40-200 for heavy modpacks."
         })
         @Config.RangeInt(min = 0, max = 1200)
-        public int keepPopulatedChunksLoadedTicks = 220;
+        public int keepPopulatedChunksLoadedTicks = 60;
 
         @Config.Comment({
                 "How many ticks to KEEP neighbor/preloaded chunks loaded after processing a step.",
                 "Usually lower than keepPopulatedChunksLoadedTicks."
         })
         @Config.RangeInt(min = 0, max = 1200)
-        public int keepNeighborChunksLoadedTicks = 90;
+        public int keepNeighborChunksLoadedTicks = 60;
 
     }
 

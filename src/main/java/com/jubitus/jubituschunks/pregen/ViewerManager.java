@@ -52,9 +52,8 @@ public class ViewerManager {
                 continue;
             }
 
-            // send updates every 5 ticks (~4 times/sec)
             s.tickCounter++;
-            if (s.tickCounter < 5) continue;
+            if (s.tickCounter < 20) continue; // update once per second
             s.tickCounter = 0;
 
             WorldServer world = server.getWorld(s.dim);

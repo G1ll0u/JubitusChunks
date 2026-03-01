@@ -185,6 +185,9 @@ public class PregenTask {
                 String msg = "Jubitus Chunks Pregeneration complete. Steps=" + iterator.getSteps() + "/" + totalSteps
                         + " | skippedExisting=" + skippedExisting;
                 notifyInitiatorAndConsole(msg);
+                try {
+                    drainUnloadsAndFlush(cps, true);
+                } catch (Throwable ignored) {}
                 PregenState.delete(world);
                 return true;
             }
@@ -262,6 +265,9 @@ public class PregenTask {
                     + " | skippedExisting=" + skippedExisting
                     + " | processedSteps=" + processedSteps;
             notifyInitiatorAndConsole(msg);
+            try {
+                drainUnloadsAndFlush(cps, true);
+            } catch (Throwable ignored) {}
             PregenState.delete(world);
             return true;
         }
@@ -361,13 +367,26 @@ public class PregenTask {
             // center-only (player-ish)
             Chunk center = loadOrGenerateRaw(cps, chunkX, chunkZ);
             if (center != null) {
-                if (!isAlreadyPopulated(center)) {
+
+                // Does this chunk already exist on disk?
+                // If yes, we should NOT "retrogen" it (avoid re-populating) if it's already populated.
+                boolean existedOnDisk = cps.isChunkGeneratedAt(chunkX, chunkZ);
+
+                boolean shouldPopulate;
+
+                if (!existedOnDisk) {
+                    // Brand new chunk: ALWAYS populate (trees/ores/etc)
+                    shouldPopulate = true;
+                } else {
+                    // Existing chunk: only populate if it's NOT populated yet
+                    // (this covers crash-resume cases without retrogen)
+                    shouldPopulate = !isAlreadyPopulated(center);
+                }
+
+                if (shouldPopulate) {
                     populateChunk(cps, chunkX, chunkZ, center);
                     generatedChunks++;
-
-                    // ✅ NEW: keep it loaded for a while after population
                     protectChunk(chunkX, chunkZ, JubitusChunksConfig.GENERAL.keepPopulatedChunksLoadedTicks);
-
                 } else if (skipExisting) {
                     skippedExisting++;
                 }
@@ -394,38 +413,47 @@ public class PregenTask {
                     int x = chunkX + dx;
                     int z = chunkZ + dz;
 
-                    // NEW: don't generate outside the requested square radius
+                    // Stay inside the requested square radius
                     if (Math.abs(x - centerChunkX) > chunkRadius || Math.abs(z - centerChunkZ) > chunkRadius) {
                         continue;
                     }
-                    // SKIP mode in bulk too (fast, no load)
-                    if (skipExisting && !verifyExisting && cps.isChunkGeneratedAt(x, z)) {
+
+                    // Does it already exist on disk?
+                    boolean existedOnDisk = cps.isChunkGeneratedAt(x, z);
+
+                    // Fast skip mode: if it exists on disk and user wants skipping, do not touch it at all.
+                    // (No retrogen, fastest.)
+                    if (skipExisting && !verifyExisting && existedOnDisk) {
                         skippedExisting++;
                         continue;
                     }
 
+                    // Ensure it's loaded/generated through normal provider path
                     Chunk c = loadOrGenerateRaw(cps, x, z);
+                    if (c == null) continue;
 
-                    if (c != null) {
-                        if (!isAlreadyPopulated(c)) {
-                            populateChunk(cps, x, z, c);
-                            generatedChunks++;
-
-                            // ✅ NEW: keep populated chunk loaded longer
-                            protectChunk(x, z, JubitusChunksConfig.GENERAL.keepPopulatedChunksLoadedTicks);
-
-                        } else if (skipExisting) {
-                            skippedExisting++;
-                        }
-
-                        if (JubitusChunksConfig.GENERAL.queueUnloadCenterChunk) {
-                            if (!shouldNeverUnload(c.x, c.z)) {
-                                cps.queueUnload(c);
-                            }
-                        }
-
+                    boolean shouldPopulate;
+                    if (!existedOnDisk) {
+                        // Brand new chunk: ALWAYS populate (trees/ores/etc)
+                        shouldPopulate = true;
+                    } else {
+                        // Existing chunk: only populate if it was never populated (crash recovery)
+                        shouldPopulate = !isAlreadyPopulated(c);
                     }
 
+                    if (shouldPopulate) {
+                        populateChunk(cps, x, z, c);
+                        generatedChunks++;
+                        protectChunk(x, z, JubitusChunksConfig.GENERAL.keepPopulatedChunksLoadedTicks);
+                    } else if (skipExisting) {
+                        skippedExisting++;
+                    }
+
+                    if (JubitusChunksConfig.GENERAL.queueUnloadCenterChunk) {
+                        if (!shouldNeverUnload(c.x, c.z)) {
+                            cps.queueUnload(c);
+                        }
+                    }
                 }
             }
 
@@ -545,7 +573,7 @@ public class PregenTask {
     }
 
     private static boolean isAlreadyPopulated(Chunk c) {
-        return c.isTerrainPopulated() && c.isLightPopulated();
+        return c.isTerrainPopulated();
     }
 
     private void populateChunk(ChunkProviderServer cps, int chunkX, int chunkZ, Chunk c) {
@@ -565,46 +593,9 @@ public class PregenTask {
 
 
     private Chunk loadOrGenerateRaw(ChunkProviderServer cps, int x, int z) {
-        // 1) déjà chargé
-        Chunk loaded = cps.getLoadedChunk(x, z);
-        if (loaded != null) return loaded;
-
-        Chunk chunk = null;
-
-        // 2) existe sur disque -> on le charge SANS appeler cps.loadChunk/provideChunk (sinon ça populate)
-        try {
-            if (cps.chunkLoader != null && cps.chunkLoader.isChunkGeneratedAt(x, z)) {
-                chunk = cps.chunkLoader.loadChunk(cps.world, x, z);
-                if (chunk != null) {
-                    chunk.setLastSaveTime(cps.world.getTotalWorldTime());
-                    // important : recrée les structures (comme vanilla le fait au chargement)
-                    cps.chunkGenerator.recreateStructures(chunk, x, z);
-                }
-            }
-        } catch (Throwable t) {
-            JubitusChunksMod.LOGGER.warn("Raw load failed for chunk {},{} dim {}", x, z, cps.world.provider.getDimension(), t);
-        }
-
-        // 3) sinon on génère le terrain (sans populate)
-        if (chunk == null) {
-            try {
-                chunk = cps.chunkGenerator.generateChunk(x, z);
-            } catch (Throwable throwable) {
-                CrashReport crashreport = CrashReport.makeCrashReport(throwable, "Exception generating new chunk (raw)");
-                CrashReportCategory cat = crashreport.makeCategory("Chunk to be generated (raw)");
-                cat.addCrashSection("Location", String.format("%d,%d", x, z));
-                cat.addCrashSection("Generator", cps.chunkGenerator);
-                throw new ReportedException(crashreport);
-            }
-        }
-
-        // 4) on l’insère comme "loaded" + onLoad, MAIS PAS populate
-        long key = ChunkPos.asLong(x, z);
-        cps.loadedChunks.put(key, chunk);
-        chunk.onLoad();
-        chunk.unloadQueued = false;
-
-        return chunk;
+        // This ensures chunks are created/loaded through the normal provider path.
+        // It prevents "terrain only" results caused by missing provider bookkeeping.
+        return cps.provideChunk(x, z);
     }
 
 
@@ -802,9 +793,6 @@ public class PregenTask {
         int vd = server.getPlayerList().getViewDistance(); // chunks
         for (EntityPlayerMP p : server.getPlayerList().getPlayers()) {
             if (p.dimension != world.provider.getDimension()) continue;
-
-            // ✅ Ignore players who are in "follow" mode so they don't block unloading
-            if (FollowManager.isWatcher(p.getUniqueID())) continue;
 
             int dx = Math.abs(p.chunkCoordX - x);
             int dz = Math.abs(p.chunkCoordZ - z);

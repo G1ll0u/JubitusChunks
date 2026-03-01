@@ -12,7 +12,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -75,8 +74,8 @@ public class JubitusChunksMod {
                     start,
                     radiusBlocks,
                     null,
-                    true,  // force safe
-                    true,  // force safe
+                    st.skipExisting,
+                    st.verifyExisting,
                     st.populateViaGenerator,
                     st.spiralSteps
             );
@@ -92,7 +91,7 @@ public class JubitusChunksMod {
     @Mod.EventHandler
     public void onServerStopping(net.minecraftforge.fml.common.event.FMLServerStoppingEvent event) {
         // Flush all running pregenerators before shutdown
-        PregenManager.stopAllAndFlush();
+        PregenManager.pauseAllAndFlush();
     }
 
 

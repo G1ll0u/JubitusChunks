@@ -41,6 +41,25 @@ public class FollowManager {
             return false;
         } else {
             SESSIONS.put(id, new Session(id, p.dimension));
+
+            // initial snap to head (if task exists)
+            PregenTask t = PregenManager.getTask(p.dimension);
+            if (t != null) {
+                WorldServer w = p.getServerWorld();
+                int hx = t.getHeadChunkX();
+                int hz = t.getHeadChunkZ();
+                int x = (hx << 4) + 8;
+                int z = (hz << 4) + 8;
+
+                BlockPos top = w.getTopSolidOrLiquidBlock(new BlockPos(x, 0, z));
+                double tx = x + 0.5;
+                double tz = z + 0.5;
+                double ty = top.getY() + 2.0; // keep near ground to avoid fly checks
+
+                p.connection.setPlayerLocation(tx, ty, tz, p.rotationYaw, p.rotationPitch);
+                p.fallDistance = 0;
+            }
+
             return true;
         }
     }
@@ -116,59 +135,41 @@ public class FollowManager {
             BlockPos top = world.getTopSolidOrLiquidBlock(new BlockPos(x, 0, z));
             double tx = x + 0.5;
             double tz = z + 0.5;
-            double ty = top.getY() + 32.0;
+            double ty = top.getY() + (p.capabilities.isFlying ? 48.0 : 2.0);
 
             // --- vector to target ---
+// compute target tx,ty,tz as you already do
             double dx = tx - p.posX;
             double dy = ty - p.posY;
             double dz = tz - p.posZ;
-
             double dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
 
-            // close enough: damp motion a bit
-            if (dist < 0.8) {
-                p.motionX *= 0.6;
-                p.motionY *= 0.6;
-                p.motionZ *= 0.6;
-                p.velocityChanged = true;
-                continue; // IMPORTANT: continue, not return
+            if (dist < 0.75) {
+                return; // already at target-ish
             }
 
-            double inv = 1.0 / Math.max(0.0001, dist);
+            double inv = 1.0 / dist;
             double dirX = dx * inv;
             double dirY = dy * inv;
             double dirZ = dz * inv;
 
-            // --- SPEED CONTROLLER ---
-            // base = head speed, plus catch-up that grows with distance
-            double headBps = Math.max(0.0, s.emaHeadBlocksPerSec);
+// server-safe step cap (blocks per tick)
+            double baseMax = 7.0;            // ~140 bps
+            double extra = Math.min(20.0, dist * 0.05); // catch-up boost but still bounded
+            double step = Math.min(dist, baseMax + extra);
 
-            // Increase this multiplier if you're still lagging behind
-            double catchupBps = dist * 1.2;
+// next position
+            double nx = p.posX + dirX * step;
+            double ny = p.posY + dirY * step;
+            double nz = p.posZ + dirZ * step;
 
-            double desiredBps = headBps + catchupBps;
+// IMPORTANT: load destination chunk so the server/client don't desync
+            WorldServer w = (WorldServer) p.world;
+            w.getChunkProvider().provideChunk(((int)Math.floor(nx)) >> 4, ((int)Math.floor(nz)) >> 4);
 
-            // cap to avoid rubberband insanity
-            double maxBps = 600.0;
-            desiredBps = Math.min(desiredBps, maxBps);
-
-            // blocks/sec -> blocks/tick (20tps)
-            double speedPerTick = desiredBps / 20.0;
-
-            // Apply motion
-            p.motionX = dirX * speedPerTick;
-            p.motionZ = dirZ * speedPerTick;
-
-            // vertical: don't bob too hard
-            double maxYPerTick = 1.2; // since you're hovering at +32, allow faster vertical correction
-            if (Math.abs(dy) > 1.5) {
-                p.motionY = Math.max(-maxYPerTick, Math.min(maxYPerTick, dirY * speedPerTick));
-            } else {
-                p.motionY *= 0.7;
-            }
-
+// move
+            p.connection.setPlayerLocation(nx, ny, nz, p.rotationYaw, p.rotationPitch);
             p.fallDistance = 0;
-            p.velocityChanged = true;
         }
     }
 

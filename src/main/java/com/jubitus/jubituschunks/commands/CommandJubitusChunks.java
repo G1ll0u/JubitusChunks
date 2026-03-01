@@ -27,11 +27,11 @@ public class CommandJubitusChunks extends CommandBase {
     @Override
     public String getUsage(ICommandSender sender) {
         return "/jubituschunks <radiusBlocks> [x] [z] [skipExisting|force]\n"
-                + "/jubituschunks stop\n"
+                + "/jubituschunks pause\n"
+                + "/jubituschunks cancel\n"
                 + "/jubituschunks resume [stepIndex] [x] [z]\n"
                 + "/jubituschunks view <radiusBlocks>\n"
-                + "/jubituschunks follow\n";
-
+                + "/jubituschunks follow (don't use it)\n";
     }
 
     @Override
@@ -159,11 +159,21 @@ public class CommandJubitusChunks extends CommandBase {
         }
 
 
-        if (args.length == 1 && "stop".equalsIgnoreCase(args[0])) {
-            // stop in sender's dimension if possible; otherwise overworld
+        if (args.length == 1 && "pause".equalsIgnoreCase(args[0])) {
             WorldServer world = getWorldForSender(server, sender);
-            boolean stopped = PregenManager.stop(world.provider.getDimension());
-            sender.sendMessage(new TextComponentString(stopped ? "jubitus chunks pregen stopped." : "No jubitus chunks pregen running here."));
+            boolean paused = PregenManager.pause(world.provider.getDimension());
+            sender.sendMessage(new TextComponentString(paused
+                    ? "jubitus chunks pregen paused (state saved). Use /jubituschunks resume to continue."
+                    : "No chunk pregen running here."));
+            return;
+        }
+
+        if (args.length == 1 && "cancel".equalsIgnoreCase(args[0])) {
+            WorldServer world = getWorldForSender(server, sender);
+            boolean cancelled = PregenManager.cancel(world);
+            sender.sendMessage(new TextComponentString(cancelled
+                    ? "jubitus chunks pregen cancelled (task stopped and saved state deleted)."
+                    : "No chunk pregen running here."));
             return;
         }
 
@@ -233,7 +243,7 @@ public class CommandJubitusChunks extends CommandBase {
             JubitusChunksMod.LOGGER.info(msg); // <-- ALSO prints to server console even if player ran it
         } else {
             sender.sendMessage(new TextComponentString(
-                    "A pregen is already running in this dimension. Use /pregenMill stop first."
+                    "A pregen is already running in this dimension. Use /jubituschunks pause first."
             ));
         }
 

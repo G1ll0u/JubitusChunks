@@ -7,7 +7,7 @@
 This mod **pregenerates chunks** for you, so the game generates terrain **ahead of time** instead of doing it while players explore.
 It also pregenerates Millénaire villages correctly.
 
-This generator is probably slower than our old closed-source chunk-pregenerator but aims to be more compatible with terraingen mods, especially Millénaire.
+This generator is probably slower than our good old chunk-pregenerator but aims to be more compatible with terraingen mods.
 The goal is to generate chunks like a player would do.
 
 Pregenerate your world means:
@@ -16,7 +16,7 @@ Pregenerate your world means:
   * No more Millénaire village generation lags
 * fewer “freeze spikes” from new chunk generation,
 * and eventually fewer worldgen crashes during normal play (because generation already happened).
-* and distant horizon <3
+* Vintage horizons <3
 
 Video :
 https://youtu.be/R2M3Zwqo27M
@@ -38,7 +38,6 @@ etc.
 
 Note that more than 24GB is not good according to sources I don't remember.
 
-Revert it after pregeneration done.
 
 ### 2) This is heavy on CPU + disk
 
@@ -107,10 +106,10 @@ you can continue with:
   /jubituschunks 8000 skipExisting
   ```
 
-### Stop pregeneration
+### Pause pregeneration
 
 ```
-/jubituschunks stop
+/jubituschunks pause
 ```
 
 Stops the running pregen in your current dimension.
@@ -119,6 +118,11 @@ Stops the running pregen in your current dimension.
 
 ```
 /jubituschunks resume [stepIndex] [x] [z]
+```
+
+### Cancel pregeneration
+```
+/jubituschunks cancel
 ```
 
 **Defaults when you type only `/jubituschunks resume`:**
@@ -140,7 +144,7 @@ Stops the running pregen in your current dimension.
   /jubituschunks resume 42000
   ```
 
-* Resume from a specific step number, but change the spiral center (stupid):
+* Resume from a specific step number, but change the spiral center (completely stupid):
 
   ```
   /jubituschunks resume 42000 0 0
@@ -169,10 +173,6 @@ You might see something like:
 * **Steps: ~125000** (example number)
 * That’s just the count of spiral positions to cover your area.
 
-### Important: steps are not blocks
-
-Steps are the mod’s internal “spiral index”. They’re only used for resume / recovery.
-
 ---
 
 ## Chunk Viewer (Real-time chunks map)
@@ -184,27 +184,6 @@ Steps are the mod’s internal “spiral index”. They’re only used for resum
 ```
 
 Opens a real-time chunk viewer GUI for the current dimension.
-
-This is meant for debugging pregeneration: it shows not only “progress”, but also what the server actually has loaded right now.
-
-**Works server**: the command is executed server-side, and the GUI opens on the player client.
-
-**Rules / behavior:**
-
-* If a pregen task is running in this dimension:
-  * Viewer centers on the **pregen center**
-  * Viewer highlights the spiral “head” working area in red (the moving square of chunks your task is currently processing)
-* If no pregen task is running:
-  * Viewer centers on your current position
-* Supports very large radii up to 12000+
-
-### Colors / legend
-
-* **Dark grey**: chunk area **not generated**
-* **Grey**: chunk area **generated**
-* **White**: chunk area **currently loaded**
-* **Red overlay**: pregenerator **head / working square**
-* **Green dot**: viewer **center**
 
 Legend may be hidden if GUI scale is too big
 
@@ -220,69 +199,15 @@ Opens the viewer for an 8000 block radius around the current pregen center (if r
 
 https://github.com/user-attachments/assets/6221de56-73c5-449a-a93b-64b71b9102bf
 
-## Expanding :
-
-A common workflow is:
-
-### Phase 1: generate a smaller safe radius
-
-```
-/jubituschunks 8000
-```
-
-Let it finish.
-
-### Phase 2: later expand the world further
-
-```
-/jubituschunks 12000
-```
-
-If `skipExisting` is enabled (default), the mod will:
-
-* **skip chunks already generated** inside 8000
-* and mostly work on the “new ring” between 8000 and 12000
-
-### Phase 3: even bigger again
-
-Same idea, repeat :
-
-```
-/jubituschunks 20000
-```
-
----
-
-## What you must be attentive of
-
-
-### Watch memory usage
-
-If heap memory climbs too high, my mod will stop your world and you will have to *restart* the game and resume the pregeneration.
-
-Best practice:
-
-* give it lots of RAM
-* don’t try insane radiuses in one go unless you know your modpack is stable
 
 ### Don’t run 10 other heavy things at the same time
 
 Keep the server/game “quiet” while pregenerating:
 
-* set peaceful mode (so there will be less entities and a bit better performance and may avoid crashes related to entities)
+* set peaceful mode (so there will be less entities and a bit better performance and may avoid eventual crashes related to entities)
 * no player in server, if running from single player set view distance to minimum for maximum efficiency
 * no big automation systems running (turn off your shit and disable other chunk-loaders)
 * no chunk loaders (if possible)
-
-### If you changed worldgen mods/settings: skipping may keep old terrain
-
-If you generate with one set of worldgen mods, then change mods later:
-
-* skipping old chunks means they won’t update
-* you’ll get borders / mismatches
-
-In that case you might choose `force`, but that’s slow and can be messy so it's not advised.
-When I generate a world, I prepare it by generating small radiuses and check if everything looks good, at this moment, I start the real big pregeneration
 
 ### Always keep backups
 ---
